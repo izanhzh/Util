@@ -10,9 +10,9 @@ namespace Util.Data.EntityFrameworkCore;
 public class UtilEntityQueryProvider : EntityQueryProvider
 {
     /// <summary>
-    /// 
+    /// 当前工作单元
     /// </summary>
-    protected UtilEfCoreCurrentUnitOfWork UtilEfCoreCurrentDbContext { get; }
+    protected UtilEfCoreCurrentUnitOfWork UtilEfCoreCurrentUnitOfWork { get; }
     /// <summary>
     /// 当前DbContext
     /// </summary>
@@ -22,22 +22,22 @@ public class UtilEntityQueryProvider : EntityQueryProvider
     /// 初始化Util自定义EntityQueryProvider
     /// </summary>
     /// <param name="queryCompiler">查询编译器</param>
-    /// <param name="utilEfCoreCurrentDbContext">获取当前DbContext帮助类</param>
+    /// <param name="utilEfCoreCurrentUnitOfWork">当前工作单元</param>
     /// <param name="currentDbContext">当前DbContext</param>
     public UtilEntityQueryProvider(
         IQueryCompiler queryCompiler,
-        UtilEfCoreCurrentUnitOfWork utilEfCoreCurrentDbContext,
+        UtilEfCoreCurrentUnitOfWork utilEfCoreCurrentUnitOfWork,
         ICurrentDbContext currentDbContext)
         : base(queryCompiler)
     {
-        UtilEfCoreCurrentDbContext = utilEfCoreCurrentDbContext;
+        UtilEfCoreCurrentUnitOfWork = utilEfCoreCurrentUnitOfWork;
         CurrentDbContext = currentDbContext;
     }
 
     /// <inheritdoc/>
     public override object Execute(Expression expression)
     {
-        using (UtilEfCoreCurrentDbContext.Use(CurrentDbContext.Context as UnitOfWorkBase))
+        using (UtilEfCoreCurrentUnitOfWork.Use(CurrentDbContext.Context as UnitOfWorkBase))
         {
             return base.Execute(expression);
         }
@@ -46,7 +46,7 @@ public class UtilEntityQueryProvider : EntityQueryProvider
     /// <inheritdoc/>
     public override TResult Execute<TResult>(Expression expression)
     {
-        using (UtilEfCoreCurrentDbContext.Use(CurrentDbContext.Context as UnitOfWorkBase))
+        using (UtilEfCoreCurrentUnitOfWork.Use(CurrentDbContext.Context as UnitOfWorkBase))
         {
             return base.Execute<TResult>(expression);
         }
@@ -55,7 +55,7 @@ public class UtilEntityQueryProvider : EntityQueryProvider
     /// <inheritdoc/>
     public override TResult ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = new CancellationToken())
     {
-        using (UtilEfCoreCurrentDbContext.Use(CurrentDbContext.Context as UnitOfWorkBase))
+        using (UtilEfCoreCurrentUnitOfWork.Use(CurrentDbContext.Context as UnitOfWorkBase))
         {
             return base.ExecuteAsync<TResult>(expression, cancellationToken);
         }
