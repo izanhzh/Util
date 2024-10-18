@@ -29,8 +29,18 @@ public class TenantFilter : FilterBase<ITenant> {
         var unitOfWork = state as UnitOfWorkBase;
         if ( unitOfWork == null )
             return null;
-        Expression<Func<TEntity, bool>> isEnabled = entity => !unitOfWork.IsTenantFilterEnabled;
-        Expression<Func<TEntity, bool>> expression = entity => EF.Property<string>( entity, "TenantId" ) == unitOfWork.CurrentTenantId;
-        return isEnabled.Or( expression );
+        Expression<Func<TEntity, bool>> expression = entity => TenantPredicate( EF.Property<string>( entity, "TenantId" ) , unitOfWork.CurrentTenantId);
+        return expression;
+    }
+
+    /// <summary>
+    /// 定义一个方法，用于映射到自定义 SQL
+    /// </summary>
+    /// <param name="tenantId">实体值</param>
+    /// <param name="currentTenantId">参数值</param>
+    /// <returns></returns>
+    /// <exception cref="NotSupportedException"></exception>
+    public static bool TenantPredicate( string tenantId, string currentTenantId ){
+        throw new NotSupportedException();
     }
 }

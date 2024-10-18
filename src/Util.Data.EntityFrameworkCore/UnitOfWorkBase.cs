@@ -1,4 +1,12 @@
-﻿using Util.Data.EntityFrameworkCore.ValueComparers;
+﻿using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Query;
+using Microsoft.EntityFrameworkCore.Query.Internal;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Options;
+using System.Data;
+using Util.Data.EntityFrameworkCore.Filters;
+using Util.Data.EntityFrameworkCore.ValueComparers;
 using Util.Data.EntityFrameworkCore.ValueConverters;
 using Util.Dates;
 using Util.Domain.Auditing;
@@ -141,6 +149,7 @@ public abstract class UnitOfWorkBase : DbContext, IUnitOfWork, IFilterSwitch {
     /// </summary>
     /// <param name="optionsBuilder">配置生成器</param>
     protected override void OnConfiguring( DbContextOptionsBuilder optionsBuilder ) {
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(new UtilDbContextOptionsExtension());//扩展实现全局过滤器动态开关时，重新触发编译表达式
         ConfigLog( optionsBuilder );
         ConfigTenant( optionsBuilder );
     }
@@ -201,7 +210,8 @@ public abstract class UnitOfWorkBase : DbContext, IUnitOfWork, IFilterSwitch {
     /// </summary>
     /// <param name="modelBuilder">模型生成器</param>
     protected override void OnModelCreating( ModelBuilder modelBuilder ) {
-        ApplyConfigurations( modelBuilder );
+        ApplyDbFunctions( modelBuilder, this.GetService<UtilEfCoreCurrentUnitOfWork>());
+        ApplyConfigurations( modelBuilder );        
         foreach ( var entityType in modelBuilder.Model.GetEntityTypes() ) {
             ApplyFilters( modelBuilder, entityType );
             ApplyExtraProperties( modelBuilder, entityType );
@@ -213,6 +223,56 @@ public abstract class UnitOfWorkBase : DbContext, IUnitOfWork, IFilterSwitch {
         }
     }
 
+    #endregion
+
+    #region ApplyDbFunctions(配置DbFunction)
+    /// <summary>
+    /// 配置DbFunction
+    /// </summary>
+    /// <param name="modelBuilder">模型生成器</param>
+    /// <param name="utilEfCoreCurrentUnitOfWork">当前工作单元</param>
+    protected virtual void ApplyDbFunctions( ModelBuilder modelBuilder, UtilEfCoreCurrentUnitOfWork utilEfCoreCurrentUnitOfWork)
+    {
+        modelBuilder.HasDbFunction(typeof(DeleteFilter).GetMethod(nameof(DeleteFilter.DeletePredicate)))
+           .HasTranslation(args =>
+           {
+               if (utilEfCoreCurrentUnitOfWork.Value.IsDeleteFilterEnabled)
+               {
+                   //IsDeleted == false
+                   return new SqlBinaryExpression(
+                       ExpressionType.Equal,
+                       args.First(),
+                       new SqlConstantExpression(Expression.Constant(false), new BoolTypeMapping("bool", DbType.Boolean)),
+                       args.First().Type,
+                       args.First().TypeMapping);
+               }
+               else
+               {
+                   //empty where sql
+                   return new SqlConstantExpression(Expression.Constant(true), new BoolTypeMapping("bool", DbType.Boolean));
+               }
+           });
+
+        modelBuilder.HasDbFunction(typeof(TenantFilter).GetMethod(nameof(TenantFilter.TenantPredicate)))
+           .HasTranslation(args =>
+           {
+               if (utilEfCoreCurrentUnitOfWork.Value.IsTenantFilterEnabled)
+               {
+                   //TenantId == CurrentTenantId
+                   return new SqlBinaryExpression(
+                       ExpressionType.Equal,
+                       args.First(),
+                       args.Skip(1).First(),
+                       args.First().Type,
+                       args.First().TypeMapping);
+               }
+               else
+               {
+                   //empty where sql
+                   return new SqlConstantExpression(Expression.Constant(true), new BoolTypeMapping("bool", DbType.Boolean));
+               }
+           });
+    } 
     #endregion
 
     #region ApplyConfigurations(配置实体类型)
@@ -260,6 +320,15 @@ public abstract class UnitOfWorkBase : DbContext, IUnitOfWork, IFilterSwitch {
     /// <typeparam name="TEntity">实体类型</typeparam>
     protected virtual Expression<Func<TEntity, bool>> GetFilterExpression<TEntity>() where TEntity : class {
         return FilterManager.GetExpression<TEntity>( this );
+    }
+
+    /// <summary>
+    /// 获取EFCore编译查询缓存Key
+    /// </summary>
+    /// <returns></returns>
+    public virtual string GetCompiledQueryCacheKey()
+    {
+        return $"{CurrentTenantId?.ToString() ?? "Null"}:{IsDeleteFilterEnabled}:{IsTenantFilterEnabled}";
     }
 
     #endregion
